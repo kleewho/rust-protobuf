@@ -1,8 +1,10 @@
 use std::fmt;
 use std::fmt::Write as fmt_Write;
+use std::sync::Arc;
 
 use protobuf::reflect::EnumDescriptor;
 use protobuf::reflect::EnumValueDescriptor;
+use protobuf::reflect::MessageDescriptor;
 use protobuf::reflect::MessageRef;
 use protobuf::reflect::ReflectFieldRef;
 use protobuf::reflect::ReflectMapRef;
@@ -28,7 +30,9 @@ use protobuf::well_known_types::wrappers::Int64Value;
 use protobuf::well_known_types::wrappers::StringValue;
 use protobuf::well_known_types::wrappers::UInt32Value;
 use protobuf::well_known_types::wrappers::UInt64Value;
+use protobuf::Message;
 use protobuf::MessageDyn;
+use protobuf::MessageFull;
 
 use crate::base64;
 use crate::float;
@@ -63,6 +67,22 @@ pub type PrintResult<T> = Result<T, PrintError>;
 struct Printer {
     buf: String,
     print_options: PrintOptions,
+    type_resolver: Box<dyn MessageTypeResolver>,
+}
+
+struct DefaultMessageTypeResolver {}
+
+impl MessageTypeResolver for DefaultMessageTypeResolver {
+    fn find_message_by_url(&self, url: &str) -> Option<MessageDescriptor> {
+        match url {
+            "type.googleapis.com/google.protobuf.Value" => Some(Value::descriptor()),
+            _ => None,
+        }
+    }
+}
+
+trait MessageTypeResolver: 'static {
+    fn find_message_by_url(&self, url: &str) -> Option<MessageDescriptor>;
 }
 
 trait PrintableToJson {
@@ -245,8 +265,14 @@ impl PrintableToJson for FieldMask {
 }
 
 impl PrintableToJson for Any {
-    fn print_to_json(&self, _w: &mut Printer) -> PrintResult<()> {
-        Err(PrintError(PrintErrorInner::AnyPrintingIsNotImplemented))
+    fn print_to_json(&self, w: &mut Printer) -> PrintResult<()> {
+        match w.type_resolver.find_message_by_url(&self.type_url) {
+            None => Err(PrintError(PrintErrorInner::AnyPrintingIsNotImplemented)),
+            Some(desc) => {
+                desc.parse_from_bytes(&(self.value.as_slice()));
+                todo!()
+            }
+        }
     }
 }
 
