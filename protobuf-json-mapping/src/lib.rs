@@ -18,5 +18,8 @@ pub use self::parse::ParseError;
 pub use self::parse::ParseOptions;
 pub use self::print::print_to_string;
 pub use self::print::print_to_string_with_options;
+pub use self::print::print_to_string_with_options_and_with_type_resolver;
+pub use self::print::DefaultMessageTypeResolver;
+pub use self::print::MessageTypeResolver;
 pub use self::print::PrintError;
 pub use self::print::PrintOptions;

@@ -1,3 +1,4 @@
+use protobuf::well_known_types::any::Any;
 use protobuf::well_known_types::duration::Duration;
 use protobuf::well_known_types::field_mask::FieldMask;
 use protobuf::well_known_types::struct_::ListValue;
@@ -5,6 +6,10 @@ use protobuf::well_known_types::struct_::NullValue;
 use protobuf::well_known_types::struct_::Struct;
 use protobuf::well_known_types::struct_::Value;
 use protobuf::well_known_types::timestamp::Timestamp;
+use protobuf::Message;
+use protobuf::MessageDyn;
+use protobuf_json_mapping::MessageTypeResolver;
+use protobuf_json_mapping::PrintOptions;
 use protobuf_test_common::*;
 
 use super::test_fmt_json_well_known_pb::*;
@@ -132,11 +137,39 @@ fn test_wrappers() {
     test_json_print_parse_message("{\"bytesValue\": \"YWI=\"}", &m);
 }
 
+struct MyTypeResolver {}
+
+impl MessageTypeResolver for MyTypeResolver {
+    fn find_message_by_url(&self, _url: &str) -> Option<protobuf::reflect::MessageDescriptor> {
+        Some(TestFmtJsonWellKnownTypes::default().descriptor_dyn())
+    }
+}
+
 #[test]
 fn test_any() {
     let mut m = TestFmtJsonWellKnownTypes::new();
-    m.any_value.mut_or_insert_default();
-    // TODO
+    let m2 = TestFmtJsonWellKnownTypes::new();
+    let any = Any {
+        type_url: format!(
+            "{}/{}",
+            "type.googleapis.com",
+            m2.descriptor_dyn().full_name()
+        ),
+        value: m2.write_to_bytes().expect("Testing"),
+        ..Default::default()
+    };
+    m.any_value.mut_or_insert_default().type_url = any.type_url;
+    m.any_value.mut_or_insert_default().value = any.value;
+
+    assert_eq!(
+        "{\"anyValue\": {\"@type\": \"type.googleapis.com/TestFmtJsonWellKnownTypes\"}}",
+        protobuf_json_mapping::print_to_string_with_options_and_with_type_resolver(
+            &m,
+            &PrintOptions::default(),
+            Box::new(MyTypeResolver {})
+        )
+        .expect("print_to_string")
+    );
 }
 
 #[test]

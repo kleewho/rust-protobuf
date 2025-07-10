@@ -1,6 +1,5 @@
 use std::fmt;
 use std::fmt::Write as fmt_Write;
-use std::sync::Arc;
 
 use protobuf::reflect::EnumDescriptor;
 use protobuf::reflect::EnumValueDescriptor;
@@ -30,7 +29,6 @@ use protobuf::well_known_types::wrappers::Int64Value;
 use protobuf::well_known_types::wrappers::StringValue;
 use protobuf::well_known_types::wrappers::UInt32Value;
 use protobuf::well_known_types::wrappers::UInt64Value;
-use protobuf::Message;
 use protobuf::MessageDyn;
 use protobuf::MessageFull;
 
@@ -70,7 +68,8 @@ struct Printer {
     type_resolver: Box<dyn MessageTypeResolver>,
 }
 
-struct DefaultMessageTypeResolver {}
+#[derive(Default, Debug, Clone)]
+pub struct DefaultMessageTypeResolver {}
 
 impl MessageTypeResolver for DefaultMessageTypeResolver {
     fn find_message_by_url(&self, url: &str) -> Option<MessageDescriptor> {
@@ -81,7 +80,7 @@ impl MessageTypeResolver for DefaultMessageTypeResolver {
     }
 }
 
-trait MessageTypeResolver: 'static {
+pub trait MessageTypeResolver: 'static {
     fn find_message_by_url(&self, url: &str) -> Option<MessageDescriptor>;
 }
 
@@ -268,10 +267,12 @@ impl PrintableToJson for Any {
     fn print_to_json(&self, w: &mut Printer) -> PrintResult<()> {
         match w.type_resolver.find_message_by_url(&self.type_url) {
             None => Err(PrintError(PrintErrorInner::AnyPrintingIsNotImplemented)),
-            Some(desc) => {
-                desc.parse_from_bytes(&(self.value.as_slice()));
-                todo!()
-            }
+            Some(desc) => w.print_dyn_message(
+                self.type_url.to_string(),
+                desc.parse_from_bytes(self.value.as_slice())
+                    .expect("hell")
+                    .as_ref(),
+            ),
         }
     }
 }
@@ -387,6 +388,13 @@ impl Printer {
 
     fn print_printable<F: PrintableToJson + ?Sized>(&mut self, f: &F) -> PrintResult<()> {
         f.print_to_json(self)
+    }
+
+    fn print_dyn_message(&mut self, type_url: String, _m: &dyn MessageDyn) -> PrintResult<()> {
+        write!(self.buf, "{{")?;
+        write!(self.buf, "\"@type\": \"{}\"", type_url)?;
+        write!(self.buf, "}}")?;
+        Ok(())
     }
 
     fn print_list<I>(&mut self, items: I) -> PrintResult<()>
@@ -598,9 +606,22 @@ pub fn print_to_string_with_options(
     message: &dyn MessageDyn,
     print_options: &PrintOptions,
 ) -> PrintResult<String> {
+    print_to_string_with_options_and_with_type_resolver(
+        message,
+        print_options,
+        Box::new(DefaultMessageTypeResolver::default()),
+    )
+}
+
+pub fn print_to_string_with_options_and_with_type_resolver(
+    message: &dyn MessageDyn,
+    print_options: &PrintOptions,
+    type_resolver: Box<dyn MessageTypeResolver>,
+) -> PrintResult<String> {
     let mut printer = Printer {
         buf: String::new(),
         print_options: print_options.clone(),
+        type_resolver,
     };
     printer.print_message(&MessageRef::from(message))?;
     Ok(printer.buf)
