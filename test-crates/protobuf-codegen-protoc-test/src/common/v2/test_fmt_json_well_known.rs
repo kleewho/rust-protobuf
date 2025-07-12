@@ -8,6 +8,7 @@ use protobuf::well_known_types::struct_::Value;
 use protobuf::well_known_types::timestamp::Timestamp;
 use protobuf::Message;
 use protobuf::MessageDyn;
+use protobuf::MessageFull;
 use protobuf_json_mapping::MessageTypeResolver;
 use protobuf_json_mapping::PrintOptions;
 use protobuf_test_common::*;
@@ -140,13 +141,19 @@ fn test_wrappers() {
 struct MyTypeResolver {}
 
 impl MessageTypeResolver for MyTypeResolver {
-    fn find_message_by_url(&self, _url: &str) -> Option<protobuf::reflect::MessageDescriptor> {
-        Some(TestFmtJsonWellKnownTypes::default().descriptor_dyn())
+    fn find_message_by_url(&self, url: &str) -> Option<protobuf::reflect::MessageDescriptor> {
+        if url == "type.googleapis.com/google.protobuf.Duration" {
+            Some(Duration::descriptor())
+        } else if url == "type.googleapis.com/google.protobuf.Timestamp" {
+            Some(Timestamp::descriptor())
+        } else {
+            Some(TestFmtJsonWellKnownTypes::default().descriptor_dyn())
+        }
     }
 }
 
 #[test]
-fn test_any() {
+fn test_any_write_empty() {
     let mut m = TestFmtJsonWellKnownTypes::new();
     let m2 = TestFmtJsonWellKnownTypes::new();
     let any = Any {
@@ -163,6 +170,44 @@ fn test_any() {
 
     assert_eq!(
         "{\"anyValue\": {\"@type\": \"type.googleapis.com/TestFmtJsonWellKnownTypes\"}}",
+        protobuf_json_mapping::print_to_string_with_options_and_with_type_resolver(
+            &m,
+            &PrintOptions::default(),
+            Box::new(MyTypeResolver {})
+        )
+        .expect("print_to_string")
+    );
+}
+
+#[test]
+fn test_any_duration() {
+    let mut m = TestFmtJsonWellKnownTypes::new();
+    let mut d = Duration::new();
+    d.seconds = 10;
+    let packed = Any::pack(&d).expect("What");
+    m.set_any_value(packed);
+
+    assert_eq!(
+        "{\"anyValue\": {\"@type\": \"type.googleapis.com/google.protobuf.Duration\", \"value\": \"10.000000000s\"}}",
+        protobuf_json_mapping::print_to_string_with_options_and_with_type_resolver(
+            &m,
+            &PrintOptions::default(),
+            Box::new(MyTypeResolver {})
+        )
+        .expect("print_to_string")
+    );
+}
+
+#[test]
+fn test_any_timestamp() {
+    let mut m = TestFmtJsonWellKnownTypes::new();
+    let mut d = Timestamp::new();
+    d.seconds = 10;
+    let packed = Any::pack(&d).expect("What");
+    m.set_any_value(packed);
+
+    assert_eq!(
+        "{\"anyValue\": {\"@type\": \"type.googleapis.com/google.protobuf.Timestamp\", \"value\": \"1970-01-01T00:00:10.000000000Z\"}}",
         protobuf_json_mapping::print_to_string_with_options_and_with_type_resolver(
             &m,
             &PrintOptions::default(),

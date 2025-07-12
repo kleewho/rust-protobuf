@@ -390,11 +390,21 @@ impl Printer {
         f.print_to_json(self)
     }
 
-    fn print_dyn_message(&mut self, type_url: String, _m: &dyn MessageDyn) -> PrintResult<()> {
-        write!(self.buf, "{{")?;
-        write!(self.buf, "\"@type\": \"{}\"", type_url)?;
-        write!(self.buf, "}}")?;
-        Ok(())
+    fn print_dyn_message(&mut self, type_url: String, m: &dyn MessageDyn) -> PrintResult<()> {
+        let message = MessageRef::from(m);
+        if message.downcast_ref::<Duration>().is_some()
+            || message.downcast_ref::<Timestamp>().is_some()
+        {
+            write!(self.buf, "{{")?;
+            self.print_type_field(type_url)?;
+            write!(self.buf, ", \"value\": ")?;
+            self.print_message(&message)?;
+            write!(self.buf, "}}")?;
+            Ok(())
+        } else {
+            self.print_regular_message(&message, Some(type_url))?;
+            Ok(())
+        }
     }
 
     fn print_list<I>(&mut self, items: I) -> PrintResult<()>
@@ -497,15 +507,29 @@ impl Printer {
         } else if let Some(value) = message.downcast_ref::<Struct>() {
             self.print_printable(value)
         } else {
-            self.print_regular_message(message)
+            self.print_regular_message(message, None)
         }
     }
 
-    fn print_regular_message(&mut self, message: &MessageRef) -> Result<(), PrintError> {
+    fn print_type_field(&mut self, type_url: String) -> fmt::Result {
+        write!(self.buf, "\"@type\": \"{}\"", type_url)
+    }
+
+    fn print_regular_message(
+        &mut self,
+        message: &MessageRef,
+        type_url: Option<String>,
+    ) -> Result<(), PrintError> {
         let descriptor = message.descriptor_dyn();
 
         write!(self.buf, "{{")?;
         let mut first = true;
+
+        if let Some(url) = type_url {
+            first = false;
+            self.print_type_field(url)?;
+        }
+
         for field in descriptor.fields() {
             let json_field_name = if self.print_options.proto_field_name {
                 field.name()
