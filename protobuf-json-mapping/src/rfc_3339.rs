@@ -421,6 +421,21 @@ impl TmUtc {
     }
 }
 
+const NANOS_PER_MILLISECONDS: u32 = 1_000_000;
+const NANOS_PER_MICROSECONDS: u32 = 1_000;
+
+pub fn format_nanos(nanos: u32) -> String {
+    if nanos == 0 {
+        "".to_string()
+    } else if nanos % NANOS_PER_MILLISECONDS == 0 {
+        format!(".{:03}", nanos / NANOS_PER_MILLISECONDS)
+    } else if nanos % NANOS_PER_MICROSECONDS == 0 {
+        format!(".{:06}", nanos / NANOS_PER_MICROSECONDS)
+    } else {
+        format!(".{:09}", nanos)
+    }
+}
+
 impl fmt::Display for TmUtc {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.year > 9999 {
@@ -436,29 +451,34 @@ impl fmt::Display for TmUtc {
             self.month, self.day, self.hour, self.minute, self.second
         )?;
 
-        // if precision is not specified, print nanoseconds
-        let subsec_digits = f.precision().unwrap_or(9);
-        if subsec_digits != 0 {
-            let mut subsec_digits = subsec_digits;
+        match f.precision() {
+            Some(subsec_digits) => {
+                if subsec_digits != 0 {
+                    let mut subsec_digits = subsec_digits;
 
-            let width = if subsec_digits > 9 { 9 } else { subsec_digits };
+                    let width = if subsec_digits > 9 { 9 } else { subsec_digits };
 
-            // "Truncated" nanonseconds.
-            let mut subsec = self.nanos;
+                    // "Truncated" nanonseconds.
+                    let mut subsec = self.nanos;
 
-            // Performs 8 iterations when precision=1,
-            // but that's probably not a issue compared to other computations.
-            for _ in width..9 {
-                subsec /= 10;
+                    // Performs 8 iterations when precision=1,
+                    // but that's probably not a issue compared to other computations.
+                    for _ in width..9 {
+                        subsec /= 10;
+                    }
+
+                    write!(f, ".{:0width$}", subsec, width = width as usize)?;
+
+                    // Adding more than 9 digits is meaningless,
+                    // but if user requests it, we should print zeros.
+                    for _ in 9..subsec_digits {
+                        write!(f, "0")?;
+                        subsec_digits -= 1;
+                    }
+                }
             }
-
-            write!(f, ".{:0width$}", subsec, width = width as usize)?;
-
-            // Adding more than 9 digits is meaningless,
-            // but if user requests it, we should print zeros.
-            for _ in 9..subsec_digits {
-                write!(f, "0")?;
-                subsec_digits -= 1;
+            None => {
+                write!(f, "{}", format_nanos(self.nanos))?;
             }
         }
 

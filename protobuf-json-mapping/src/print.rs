@@ -32,6 +32,7 @@ use protobuf::MessageDyn;
 
 use crate::base64;
 use crate::float;
+use crate::rfc_3339::format_nanos;
 use crate::rfc_3339::TmUtc;
 use crate::well_known_wrapper::WellKnownWrapper;
 
@@ -220,10 +221,10 @@ impl PrintableToJson for Duration {
         let sign = if self.seconds >= 0 { "" } else { "-" };
         Ok(write!(
             w.buf,
-            "\"{}{}.{:09}s\"",
+            "\"{}{}{}s\"",
             sign,
             self.seconds.abs(),
-            self.nanos.abs()
+            format_nanos(self.nanos.unsigned_abs())
         )?)
     }
 }
